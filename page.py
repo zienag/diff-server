@@ -10,16 +10,11 @@ from tree import build_file_tree, render_tree_html, diff_bar_html, SVG_CHEVRON_D
 SVG_SEARCH = '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M10.68 11.74a6 6 0 01-7.922-8.982 6 6 0 018.982 7.922l3.04 3.04a.749.749 0 01-.326 1.275.749.749 0 01-.734-.215l-3.04-3.04zM11.5 7a4.499 4.499 0 10-8.997 0A4.499 4.499 0 0011.5 7z" fill="currentColor"/></svg>'
 
 
-def make_html(vcs, root, diff_text, path, refresh_seconds):
-    files, total_add, total_del = parse_and_render_diff(diff_text, path, root)
-    file_count = len(files)
-    diff_hash = hash(diff_text)
-
-    file_tree = build_file_tree(files)
-    tree_html = render_tree_html(file_tree)
-
-    file_sections = ""
-    for i, f in enumerate(files):
+def _render_file_sections(files, idx_offset=0):
+    """Render file diff sections, returning HTML and next index offset."""
+    html = ""
+    for local_i, f in enumerate(files):
+        i = idx_offset + local_i
         fname = os.path.basename(f["path"])
         fdir = os.path.dirname(f["path"])
         adds = f["additions"]
@@ -32,7 +27,7 @@ def make_html(vcs, root, diff_text, path, refresh_seconds):
         bar = diff_bar_html(adds, dels)
 
         dir_part = f'<span class="fh-dir">{escape(fdir)}/</span>' if fdir else ''
-        file_sections += f'''
+        html += f'''
         <div class="file-section" id="file-{i}">
             <div class="file-header" onclick="toggleFile({i})">
                 <span class="fh-chev" id="chev-{i}">{SVG_CHEVRON_DOWN}</span>
@@ -41,6 +36,43 @@ def make_html(vcs, root, diff_text, path, refresh_seconds):
             </div>
             <div class="file-body" id="body-{i}">{f["html"]}</div>
         </div>'''
+    return html
+
+
+def make_html(vcs, root, staged_diff, unstaged_diff, path, refresh_seconds):
+    staged_files, staged_add, staged_del = parse_and_render_diff(staged_diff, path, root) if staged_diff else ([], 0, 0)
+    unstaged_files, unstaged_add, unstaged_del = parse_and_render_diff(unstaged_diff, path, root) if unstaged_diff else ([], 0, 0)
+
+    # Global file index: staged files first, then unstaged
+    all_files = staged_files + unstaged_files
+    file_count = len(all_files)
+    total_add = staged_add + unstaged_add
+    total_del = staged_del + unstaged_del
+    diff_hash = hash(staged_diff + unstaged_diff)
+
+    # Build sidebar tree with separate sections
+    has_both = bool(staged_files) and bool(unstaged_files)
+    tree_html = ""
+    if staged_files:
+        staged_tree = build_file_tree(staged_files)
+        if has_both:
+            tree_html += f'<div class="tree-section-label tree-section-staged">Staged <span class="tree-section-count">{len(staged_files)}</span></div>'
+        tree_html += render_tree_html(staged_tree)
+    if unstaged_files:
+        unstaged_tree = build_file_tree(unstaged_files, idx_offset=len(staged_files))
+        if has_both:
+            tree_html += f'<div class="tree-section-label tree-section-unstaged">Modified <span class="tree-section-count">{len(unstaged_files)}</span></div>'
+        tree_html += render_tree_html(unstaged_tree)
+
+    # Build diff pane content
+    diff_content = ""
+    if staged_files:
+        diff_content += f'<div class="section-header section-staged">Staged <span class="section-count">{len(staged_files)}</span></div>'
+        diff_content += _render_file_sections(staged_files, idx_offset=0)
+    if unstaged_files:
+        label = "Modified" if staged_files else "Changes"
+        diff_content += f'<div class="section-header section-unstaged">{label} <span class="section-count">{len(unstaged_files)}</span></div>'
+        diff_content += _render_file_sections(unstaged_files, idx_offset=len(staged_files))
 
     total_bar = diff_bar_html(total_add, total_del)
     short = os.path.basename(path.rstrip("/")) or path
@@ -102,7 +134,7 @@ def make_html(vcs, root, diff_text, path, refresh_seconds):
         </div>
         <div class="resize-handle" id="resize-handle"></div>
         <div class="diff-pane" id="diff-pane">
-            {empty_state if file_count == 0 else file_sections}
+            {empty_state if file_count == 0 else diff_content}
         </div>
     </div>
 </div>

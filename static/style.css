@@ -304,6 +304,10 @@ html, body {
 .fs-del { color: var(--red); }
 
 .file-body { overflow-x: auto; }
+.file-body::-webkit-scrollbar { height: 6px; }
+.file-body::-webkit-scrollbar-track { background: transparent; }
+.file-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.file-body::-webkit-scrollbar-thumb:hover { background: var(--fg-tertiary); }
 .file-body.collapsed { display: none; }
 
 .file-diff table {
@@ -377,6 +381,48 @@ html, body {
     font-weight: 500; letter-spacing: 1px;
     text-transform: uppercase;
 }
+
+/* ===== Sidebar section labels ===== */
+.tree-section-label {
+    padding: 5px 8px 2px;
+    font-family: var(--display); font-size: 9px; font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase;
+    color: var(--fg-tertiary);
+    display: flex; align-items: center; gap: 5px;
+}
+.tree-section-staged { color: var(--green); }
+.tree-section-unstaged { color: var(--amber); margin-top: 4px; border-top: 1px solid var(--border-subtle); padding-top: 6px; }
+.tree-section-count {
+    font-size: 9px;
+    padding: 0 4px; border-radius: 3px;
+    font-family: var(--mono); font-weight: 600;
+    line-height: 14px;
+}
+.tree-section-staged .tree-section-count { background: var(--green-bg); color: var(--green); }
+.tree-section-unstaged .tree-section-count { background: var(--accent-dim); color: var(--amber); }
+
+/* ===== Diff pane section headers (Staged / Modified) ===== */
+.section-header {
+    padding: 6px 12px;
+    margin: 4px 6px 0;
+    font-family: var(--display); font-size: 10px; font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase;
+    color: var(--fg-tertiary);
+    display: flex; align-items: center; gap: 6px;
+    position: sticky; top: 0; z-index: 11;
+    background: var(--bg-inset);
+    border-bottom: 1px solid var(--border-subtle);
+}
+.section-staged { color: var(--green); }
+.section-unstaged { color: var(--amber); }
+.section-count {
+    font-size: 9px;
+    padding: 0 5px; border-radius: 3px;
+    font-family: var(--mono); font-weight: 600;
+    line-height: 16px;
+}
+.section-staged .section-count { background: var(--green-bg); color: var(--green); }
+.section-unstaged .section-count { background: var(--accent-dim); color: var(--amber); }
 
 .theme-btn {
     display: flex; align-items: center; justify-content: center;

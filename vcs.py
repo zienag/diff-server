@@ -66,17 +66,33 @@ def make_untracked_diff(files, cwd, root):
 
 
 def get_diff(path):
+    """Return (vcs, root, staged_diff, unstaged_diff).
+
+    For git: staged = git diff --cached, unstaged = git diff + untracked.
+    For arc: no staging concept, so staged is empty and everything goes to unstaged.
+    """
     vcs, root = detect_vcs(path)
     if not vcs:
-        return None, None, ""
+        return None, None, "", ""
     try:
-        result = subprocess.run(
-            [vcs, "diff"], cwd=path, capture_output=True, text=True, timeout=10
-        )
-        diff_text = result.stdout
+        if vcs == "git":
+            staged = subprocess.run(
+                ["git", "diff", "--cached"], cwd=path,
+                capture_output=True, text=True, timeout=10,
+            ).stdout
+            unstaged = subprocess.run(
+                ["git", "diff"], cwd=path,
+                capture_output=True, text=True, timeout=10,
+            ).stdout
+        else:
+            staged = ""
+            unstaged = subprocess.run(
+                [vcs, "diff"], cwd=path,
+                capture_output=True, text=True, timeout=10,
+            ).stdout
         untracked = get_untracked_files(vcs, path)
         if untracked:
-            diff_text += make_untracked_diff(untracked, path, root)
-        return vcs, root, diff_text
+            unstaged += make_untracked_diff(untracked, path, root)
+        return vcs, root, staged, unstaged
     except Exception:
-        return vcs, root, ""
+        return vcs, root, "", ""

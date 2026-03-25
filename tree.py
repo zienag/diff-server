@@ -6,7 +6,7 @@ from html import escape
 SVG_CHEVRON_DOWN = '<svg class="chev-svg" viewBox="4 7 16 10" width="14" height="9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>'
 
 
-def build_file_tree(files):
+def build_file_tree(files, idx_offset=0):
     tree = {}
     for i, f in enumerate(files):
         parts = f["path"].split("/")
@@ -15,7 +15,7 @@ def build_file_tree(files):
             if part not in node:
                 node[part] = {}
             node = node[part]
-        node[parts[-1]] = {"_idx": i, "_file": f}
+        node[parts[-1]] = {"_idx": idx_offset + i, "_file": f}
     return collapse_single_dirs(tree)
 
 

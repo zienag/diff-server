@@ -82,8 +82,8 @@ class DiffHandler(BaseHTTPRequestHandler):
         path = params.get("path", [None])[0]
         if path:
             path = os.path.expanduser(path)
-            _, _, diff_text = get_diff(path)
-            self._json_response({"hash": hash(diff_text)})
+            _, _, staged, unstaged = get_diff(path)
+            self._json_response({"hash": hash(staged + unstaged)})
 
     def _handle_page(self, params):
         path = params.get("path", [None])[0]
@@ -106,8 +106,8 @@ class DiffHandler(BaseHTTPRequestHandler):
             self.send_error(400, f"Not a directory: {path}")
             return
 
-        vcs, root, diff_text = get_diff(path)
-        html = make_html(vcs, root, diff_text, path, refresh)
+        vcs, root, staged, unstaged = get_diff(path)
+        html = make_html(vcs, root, staged, unstaged, path, refresh)
 
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
