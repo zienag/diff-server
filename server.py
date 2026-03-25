@@ -386,11 +386,69 @@ def make_html(vcs, root, diff_text, path, refresh_seconds):
     --red-ln: #3a1418;
     --red-border: #4a1a1e;
     --amber: #f5a623;
+    --green-hover: #143520;
+    --red-hover: #381518;
     --mono: "IBM Plex Mono", "SF Mono", Menlo, monospace;
     --sans: "DM Sans", -apple-system, sans-serif;
     --display: "Anybody", sans-serif;
     --radius: 8px;
     --radius-sm: 5px;
+}}
+[data-theme="light"] {{
+    --bg: #f8f8fa;
+    --bg-raised: #ffffff;
+    --bg-surface: #f0f0f4;
+    --bg-hover: #e8e8ee;
+    --bg-inset: #eeeef2;
+    --border: #d4d4dc;
+    --border-subtle: #e2e2ea;
+    --fg: #1a1a2e;
+    --fg-secondary: #555570;
+    --fg-tertiary: #8888a0;
+    --accent: #7c3aed;
+    --accent-dim: #7c3aed18;
+    --green: #1a7f37;
+    --green-fg: #1a5c2a;
+    --green-bg: #dafbe1;
+    --green-ln: #ccffd8;
+    --green-border: #a7f3bc;
+    --red: #cf222e;
+    --red-fg: #82071e;
+    --red-bg: #ffebe9;
+    --red-ln: #ffd7d5;
+    --red-border: #ffb8b8;
+    --amber: #bf8700;
+    --green-hover: #c2eecb;
+    --red-hover: #fdd8d5;
+}}
+@media (prefers-color-scheme: light) {{
+    [data-theme="auto"] {{
+        --bg: #f8f8fa;
+        --bg-raised: #ffffff;
+        --bg-surface: #f0f0f4;
+        --bg-hover: #e8e8ee;
+        --bg-inset: #eeeef2;
+        --border: #d4d4dc;
+        --border-subtle: #e2e2ea;
+        --fg: #1a1a2e;
+        --fg-secondary: #555570;
+        --fg-tertiary: #8888a0;
+        --accent: #7c3aed;
+        --accent-dim: #7c3aed18;
+        --green: #1a7f37;
+        --green-fg: #1a5c2a;
+        --green-bg: #dafbe1;
+        --green-ln: #ccffd8;
+        --green-border: #a7f3bc;
+        --red: #cf222e;
+        --red-fg: #82071e;
+        --red-bg: #ffebe9;
+        --red-ln: #ffd7d5;
+        --red-border: #ffb8b8;
+        --amber: #bf8700;
+        --green-hover: #c2eecb;
+        --red-hover: #fdd8d5;
+    }}
 }}
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
 html, body {{
@@ -635,12 +693,12 @@ html, body {{
 .line.add {{ background: var(--green-bg); }}
 .line.add .ln {{ background: var(--green-ln); color: var(--green); }}
 .line.add .code {{ color: var(--green-fg); }}
-.line.add:hover {{ background: #143520; }}
+.line.add:hover {{ background: var(--green-hover, #143520); }}
 
 .line.del {{ background: var(--red-bg); }}
 .line.del .ln {{ background: var(--red-ln); color: var(--red); }}
 .line.del .code {{ color: var(--red-fg); }}
-.line.del:hover {{ background: #381518; }}
+.line.del:hover {{ background: var(--red-hover, #381518); }}
 
 .hunk-header td {{
     background: var(--bg-surface); padding: 5px 0;
@@ -684,7 +742,19 @@ html, body {{
     text-transform: uppercase;
 }}
 
+.theme-btn {{
+    display: flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px;
+    background: none; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); cursor: pointer;
+    color: var(--fg-tertiary); transition: all 0.15s ease;
+    flex-shrink: 0;
+}}
+.theme-btn:hover {{ color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }}
+.theme-btn svg {{ display: block; }}
+
 </style>
+<script>document.documentElement.setAttribute('data-theme',localStorage.getItem('diff-theme')||'auto')</script>
 </head>
 <body>
 <div class="layout">
@@ -698,6 +768,11 @@ html, body {{
         </span>
         <span style="flex:1"></span>
         <button class="show-all-btn" id="show-all-btn" style="display:none" onclick="showAll()">Show all</button>
+        <button class="theme-btn" id="theme-btn" onclick="cycleTheme()" title="Toggle theme">
+            <svg id="theme-icon-dark" viewBox="0 0 16 16" width="14" height="14" fill="currentColor" style="display:none"><path d="M6.2 1.2a.75.75 0 00-1.06.04 7 7 0 109.58 1.34.75.75 0 00-1.04-.22 5.5 5.5 0 01-7.52-1.2z"/></svg>
+            <svg id="theme-icon-light" viewBox="0 0 16 16" width="14" height="14" fill="currentColor" style="display:none"><path d="M8 1.5a.75.75 0 01.75.75v1a.75.75 0 01-1.5 0v-1A.75.75 0 018 1.5zm0 9a2.5 2.5 0 100-5 2.5 2.5 0 000 5zm5.66-5.16a.75.75 0 010 1.06l-.7.71a.75.75 0 11-1.07-1.06l.71-.71a.75.75 0 011.06 0zM14.5 8a.75.75 0 01-.75.75h-1a.75.75 0 010-1.5h1A.75.75 0 0114.5 8zm-2.84 5.66a.75.75 0 01-1.06 0l-.71-.7a.75.75 0 111.06-1.07l.71.71a.75.75 0 010 1.06zM8 14.5a.75.75 0 01-.75-.75v-1a.75.75 0 011.5 0v1A.75.75 0 018 14.5zm-5.66-2.84a.75.75 0 010-1.06l.7-.71a.75.75 0 111.07 1.06l-.71.71a.75.75 0 01-1.06 0zM1.5 8a.75.75 0 01.75-.75h1a.75.75 0 010 1.5h-1A.75.75 0 011.5 8zm2.84-5.66a.75.75 0 011.06 0l.71.7a.75.75 0 11-1.06 1.07l-.71-.71a.75.75 0 010-1.06z"/></svg>
+            <svg id="theme-icon-auto" viewBox="0 0 16 16" width="14" height="14" fill="currentColor" style="display:none"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zM3 8a5 5 0 015-5v10a5 5 0 01-5-5z"/></svg>
+        </button>
         <span class="tb-dot" id="refresh-dot"></span>
     </div>
     <div class="main">
@@ -720,6 +795,22 @@ html, body {{
 </div>
 
 <script>
+const THEMES = ['auto', 'dark', 'light'];
+function applyTheme(t) {{
+    document.documentElement.setAttribute('data-theme', t);
+    document.getElementById('theme-icon-dark').style.display = t === 'dark' ? '' : 'none';
+    document.getElementById('theme-icon-light').style.display = t === 'light' ? '' : 'none';
+    document.getElementById('theme-icon-auto').style.display = t === 'auto' ? '' : 'none';
+    document.getElementById('theme-btn').title = 'Theme: ' + t;
+}}
+function cycleTheme() {{
+    const cur = localStorage.getItem('diff-theme') || 'dark';
+    const next = THEMES[(THEMES.indexOf(cur) + 1) % THEMES.length];
+    localStorage.setItem('diff-theme', next);
+    applyTheme(next);
+}}
+applyTheme(localStorage.getItem('diff-theme') || 'dark');
+
 let activeFilter = null;
 
 function toggleFile(i) {{
