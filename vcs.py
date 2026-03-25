@@ -1,4 +1,4 @@
-"""VCS detection and diff retrieval for git and arc."""
+"""VCS detection and diff retrieval."""
 
 import os
 import subprocess
@@ -69,7 +69,7 @@ def get_diff(path):
     """Return (vcs, root, staged_diff, unstaged_diff).
 
     For git: staged = git diff --cached, unstaged = git diff + untracked.
-    For arc: no staging concept, so staged is empty and everything goes to unstaged.
+    For VCS without staging (e.g. svn-like): staged is empty, everything goes to unstaged.
     """
     vcs, root = detect_vcs(path)
     if not vcs:

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Python HTTP server that renders a live diff viewer in the browser. It shows VCS changes (git or arc) as a GitHub-style stacked diff with a collapsible file tree sidebar. No dependencies beyond Python 3 stdlib.
+A Python HTTP server that renders a live diff viewer in the browser. It shows VCS changes as a GitHub-style stacked diff with a collapsible file tree sidebar. No dependencies beyond Python 3 stdlib.
 
 ## Running
 
@@ -20,7 +20,7 @@ Query params: `path` (required, repo directory), `refresh` (poll interval in sec
 
 ```
 server.py        — HTTP handler, static file serving, entry point
-vcs.py           — VCS detection (git/arc), diff retrieval, untracked files
+vcs.py           — VCS detection, diff retrieval, untracked files
 diff_parser.py   — Unified diff text → per-file HTML table fragments
 tree.py          — File tree building, collapsing single-child dirs, sidebar HTML
 page.py          — Full HTML page assembly, SVG icons, template

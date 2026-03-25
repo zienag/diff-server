@@ -1,6 +1,6 @@
 # diff-server
 
-A zero-dependency Python server that renders a live diff viewer in the browser. Shows git/arc changes as a GitHub-style stacked diff with a file tree sidebar.
+A zero-dependency Python server that renders a live diff viewer in the browser. Shows git changes as a GitHub-style stacked diff with a file tree sidebar.
 
 ![Python 3](https://img.shields.io/badge/python-3-blue)
 
@@ -20,7 +20,7 @@ http://localhost:8777?path=/path/to/your/repo
 
 | Param | Description | Default |
 |-------|-------------|---------|
-| `path` | Path to a git/arc repository (required) | — |
+| `path` | Path to a git repository (required) | — |
 | `refresh` | Auto-refresh interval in seconds | `3` |
 
 ## Features
@@ -31,5 +31,5 @@ http://localhost:8777?path=/path/to/your/repo
 - Untracked files shown as new file diffs
 - Expand-in-place context lines (click "Show lines N–M")
 - Resizable sidebar
-- Supports both **git** and **arc** (Arcanum) repositories
+- Supports multiple VCS backends
 - No dependencies — Python 3 stdlib only
