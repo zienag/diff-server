@@ -30,7 +30,8 @@
     --radius: 8px;
     --radius-sm: 5px;
 }
-[data-theme="light"] {
+[data-theme="light"],
+[data-theme="auto"] {
     --bg: #f8f8fa;
     --bg-raised: #ffffff;
     --bg-surface: #f0f0f4;
@@ -57,33 +58,33 @@
     --green-hover: #c2eecb;
     --red-hover: #fdd8d5;
 }
-@media (prefers-color-scheme: light) {
+@media (prefers-color-scheme: dark) {
     [data-theme="auto"] {
-        --bg: #f8f8fa;
-        --bg-raised: #ffffff;
-        --bg-surface: #f0f0f4;
-        --bg-hover: #e8e8ee;
-        --bg-inset: #eeeef2;
-        --border: #d4d4dc;
-        --border-subtle: #e2e2ea;
-        --fg: #1a1a2e;
-        --fg-secondary: #555570;
-        --fg-tertiary: #8888a0;
-        --accent: #7c3aed;
-        --accent-dim: #7c3aed18;
-        --green: #1a7f37;
-        --green-fg: #1a5c2a;
-        --green-bg: #dafbe1;
-        --green-ln: #ccffd8;
-        --green-border: #a7f3bc;
-        --red: #cf222e;
-        --red-fg: #82071e;
-        --red-bg: #ffebe9;
-        --red-ln: #ffd7d5;
-        --red-border: #ffb8b8;
-        --amber: #bf8700;
-        --green-hover: #c2eecb;
-        --red-hover: #fdd8d5;
+        --bg: #111113;
+        --bg-raised: #19191d;
+        --bg-surface: #1e1e23;
+        --bg-hover: #252530;
+        --bg-inset: #0c0c0e;
+        --border: #2a2a35;
+        --border-subtle: #1f1f28;
+        --fg: #ececf1;
+        --fg-secondary: #a1a1b5;
+        --fg-tertiary: #62627a;
+        --accent: #c4a0ff;
+        --accent-dim: #c4a0ff22;
+        --green: #4ae08a;
+        --green-fg: #b8f5d0;
+        --green-bg: #0f2818;
+        --green-ln: #0a3318;
+        --green-border: #1a4a28;
+        --red: #ff6b6b;
+        --red-fg: #ffb3b3;
+        --red-bg: #2d1215;
+        --red-ln: #3a1418;
+        --red-border: #4a1a1e;
+        --amber: #f5a623;
+        --green-hover: #143520;
+        --red-hover: #381518;
     }
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -381,6 +382,13 @@ html, body {
     font-weight: 500; letter-spacing: 1px;
     text-transform: uppercase;
 }
+.loading-text {
+    font-family: var(--display); font-size: 11px;
+    font-weight: 500; letter-spacing: 1px;
+    text-transform: uppercase; color: var(--fg-tertiary);
+    animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
 
 /* ===== Sidebar section labels ===== */
 .tree-section-label {

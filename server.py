@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Live diff server — file tree + stacked diff view."""
 
+import hashlib
 import json
 import os
+import time
 import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from socketserver import ThreadingMixIn
 
-from vcs import detect_vcs, get_diff
-from page import make_html
+from vcs import detect_vcs, get_diff, get_diff_fingerprint
+from page import make_shell_html, make_content
 
 PORT = 8777
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -34,6 +37,10 @@ class DiffHandler(BaseHTTPRequestHandler):
 
         if parsed.path == "/hash":
             self._handle_hash(params)
+            return
+
+        if parsed.path == "/content":
+            self._handle_content(params)
             return
 
         self._handle_page(params)
@@ -82,8 +89,25 @@ class DiffHandler(BaseHTTPRequestHandler):
         path = params.get("path", [None])[0]
         if path:
             path = os.path.expanduser(path)
-            _, _, staged, unstaged = get_diff(path)
-            self._json_response({"hash": hash(staged + unstaged)})
+            fingerprint = get_diff_fingerprint(path)
+            self._json_response({"hash": hashlib.md5(fingerprint.encode()).hexdigest()})
+
+    def _handle_content(self, params):
+        path = params.get("path", [None])[0]
+        if not path:
+            self._json_response({"error": "no path"})
+            return
+        path = os.path.expanduser(path)
+        if not os.path.isdir(path):
+            self._json_response({"error": "not a directory"})
+            return
+        t0 = time.monotonic()
+        vcs, root, staged, unstaged = get_diff(path)
+        t1 = time.monotonic()
+        result = make_content(vcs, root, staged, unstaged, path)
+        t2 = time.monotonic()
+        print(f"[perf] get_diff={t1-t0:.3f}s  render={t2-t1:.3f}s  staged={len(staged)}b  unstaged={len(unstaged)}b", flush=True)
+        self._json_response(result)
 
     def _handle_page(self, params):
         path = params.get("path", [None])[0]
@@ -106,8 +130,8 @@ class DiffHandler(BaseHTTPRequestHandler):
             self.send_error(400, f"Not a directory: {path}")
             return
 
-        vcs, root, staged, unstaged = get_diff(path)
-        html = make_html(vcs, root, staged, unstaged, path, refresh)
+        vcs, _ = detect_vcs(path)
+        html = make_shell_html(vcs, path, refresh)
 
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -122,12 +146,18 @@ class DiffHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def log_message(self, format, *args):
+    def log_message(self, fmt, *args):
+        if any(x in args[0] for x in ['/content', '/hash']) if args else False:
+            return
         pass
 
 
+class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+    daemon_threads = True
+
+
 def main():
-    server = HTTPServer(("127.0.0.1", PORT), DiffHandler)
+    server = ThreadedHTTPServer(("127.0.0.1", PORT), DiffHandler)
     print(f"diff-server on http://localhost:{PORT}")
     try:
         server.serve_forever()

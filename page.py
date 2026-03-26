@@ -1,5 +1,6 @@
 """HTML page assembly for the diff viewer."""
 
+import hashlib
 import json
 import os
 from html import escape
@@ -39,18 +40,16 @@ def _render_file_sections(files, idx_offset=0):
     return html
 
 
-def make_html(vcs, root, staged_diff, unstaged_diff, path, refresh_seconds):
+def make_content(vcs, root, staged_diff, unstaged_diff, path):
+    """Build diff content and return a dict for JSON response."""
     staged_files, staged_add, staged_del = parse_and_render_diff(staged_diff, path, root) if staged_diff else ([], 0, 0)
     unstaged_files, unstaged_add, unstaged_del = parse_and_render_diff(unstaged_diff, path, root) if unstaged_diff else ([], 0, 0)
 
-    # Global file index: staged files first, then unstaged
-    all_files = staged_files + unstaged_files
-    file_count = len(all_files)
+    file_count = len(staged_files) + len(unstaged_files)
     total_add = staged_add + unstaged_add
     total_del = staged_del + unstaged_del
-    diff_hash = hash(staged_diff + unstaged_diff)
+    diff_hash = hashlib.md5((staged_diff + unstaged_diff).encode()).hexdigest()
 
-    # Build sidebar tree with separate sections
     has_both = bool(staged_files) and bool(unstaged_files)
     tree_html = ""
     if staged_files:
@@ -64,7 +63,6 @@ def make_html(vcs, root, staged_diff, unstaged_diff, path, refresh_seconds):
             tree_html += f'<div class="tree-section-label tree-section-unstaged">Modified <span class="tree-section-count">{len(unstaged_files)}</span></div>'
         tree_html += render_tree_html(unstaged_tree)
 
-    # Build diff pane content
     diff_content = ""
     if staged_files:
         diff_content += f'<div class="section-header section-staged">Staged <span class="section-count">{len(staged_files)}</span></div>'
@@ -75,20 +73,39 @@ def make_html(vcs, root, staged_diff, unstaged_diff, path, refresh_seconds):
         diff_content += _render_file_sections(unstaged_files, idx_offset=len(staged_files))
 
     total_bar = diff_bar_html(total_add, total_del)
+
+    if file_count == 0:
+        diff_content = (
+            "<div class='empty-state'>"
+            "<svg viewBox='0 0 24 24' width='36' height='36' fill='none' stroke='currentColor' stroke-width='1.5'>"
+            "<polyline points='20 6 9 17 4 12'/></svg>"
+            "<span class='empty-text'>Clean</span></div>"
+        )
+
+    summary_html = (
+        f'<b>{file_count}</b> file{"s" if file_count != 1 else ""}'
+        f' <span class="stat-add">+{total_add}</span>'
+        f' <span class="stat-del">&minus;{total_del}</span>'
+        f' {total_bar}'
+    )
+
+    return {
+        "diffHash": diff_hash,
+        "fileCount": file_count,
+        "summaryHtml": summary_html,
+        "treeHtml": tree_html,
+        "diffHtml": diff_content,
+    }
+
+
+def make_shell_html(vcs, path, refresh_seconds):
     short = os.path.basename(path.rstrip("/")) or path
 
     config_json = json.dumps({
-        "diffHash": diff_hash,
+        "diffHash": None,
         "repoPath": path,
         "refreshSeconds": refresh_seconds,
     })
-
-    empty_state = (
-        "<div class='empty-state'>"
-        "<svg viewBox='0 0 24 24' width='36' height='36' fill='none' stroke='currentColor' stroke-width='1.5'>"
-        "<polyline points='20 6 9 17 4 12'/></svg>"
-        "<span class='empty-text'>Clean</span></div>"
-    )
 
     return f"""<!DOCTYPE html>
 <html>
@@ -105,11 +122,8 @@ def make_html(vcs, root, staged_diff, unstaged_diff, path, refresh_seconds):
 <div class="layout">
     <div class="toolbar">
         <span class="tb-vcs">{vcs or "?"}</span>
-        <span class="tb-summary">
-            <b>{file_count}</b> file{"s" if file_count != 1 else ""}
-            <span class="stat-add">+{total_add}</span>
-            <span class="stat-del">&minus;{total_del}</span>
-            {total_bar}
+        <span class="tb-summary" id="tb-summary">
+            <span class="loading-text">Loading\u2026</span>
         </span>
         <span style="flex:1"></span>
         <button class="show-all-btn" id="show-all-btn" style="display:none" onclick="showAll()">Show all</button>
@@ -124,17 +138,17 @@ def make_html(vcs, root, staged_diff, unstaged_diff, path, refresh_seconds):
         <div class="sidebar" id="sidebar">
             <div class="sb-header">
                 <span class="sb-label">Changes</span>
-                <span class="sb-count">{file_count}</span>
+                <span class="sb-count" id="sb-count">&hellip;</span>
             </div>
             <div class="sb-filter">
                 <span class="sb-filter-icon">{SVG_SEARCH}</span>
                 <input id="filter" type="text" placeholder="Filter\u2026" oninput="filterTree(this.value)" spellcheck="false">
             </div>
-            <div class="tree-scroll" id="tree">{tree_html}</div>
+            <div class="tree-scroll" id="tree"></div>
         </div>
         <div class="resize-handle" id="resize-handle"></div>
         <div class="diff-pane" id="diff-pane">
-            {empty_state if file_count == 0 else diff_content}
+            <div class="empty-state"><span class="loading-text">Loading\u2026</span></div>
         </div>
     </div>
 </div>

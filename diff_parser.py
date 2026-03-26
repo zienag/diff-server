@@ -16,15 +16,18 @@ def make_relative(filepath, cwd, root):
 def parse_and_render_diff(diff_text, cwd, root):
     files = []
     current = None
+    parts = None
     total_add = 0
     total_del = 0
 
     for line in diff_text.splitlines():
         if line.startswith("diff ") or line.startswith("--- "):
             if current:
-                current["html"] += "</table></div>"
+                parts.append("</table></div>")
+                current["html"] = "".join(parts)
                 files.append(current)
                 current = None
+                parts = None
         if line.startswith("+++ "):
             raw = line[4:]
             if raw.startswith("b/"):
@@ -32,8 +35,8 @@ def parse_and_render_diff(diff_text, cwd, root):
             raw = raw.split("\t")[0].strip()
             if raw and raw != "/dev/null":
                 rel = make_relative(raw, cwd, root)
-                current = {"path": rel, "raw_path": raw, "additions": 0, "deletions": 0, "html": ""}
-                current["html"] = '<div class="file-diff"><table>'
+                current = {"path": rel, "raw_path": raw, "additions": 0, "deletions": 0}
+                parts = ['<div class="file-diff"><table>']
                 current["_first_hunk"] = True
         elif line.startswith("@@") and current:
             m = re.match(r"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)", line)
@@ -45,24 +48,24 @@ def parse_and_render_diff(diff_text, cwd, root):
 
                 if current.get("_first_hunk"):
                     if new_start > 1:
-                        current["html"] += (
+                        parts.append(
                             f'<tr class="expand-row" data-file=\'{raw_path_js}\' data-start="1" data-end="{new_start - 1}">'
                             f'<td class="ln"></td>'
-                            f'<td class="expand-cell" onclick="expandLines(this)">'
+                            f'<td class="expand-cell" onclick="expandLines(this,event)">'
                             f'\u2191 Show lines 1\u2013{new_start - 1}</td></tr>'
                         )
                     current["_first_hunk"] = False
                 else:
                     prev_end = current.get("_last_new_line", 0)
                     if new_start - prev_end > 1:
-                        current["html"] += (
+                        parts.append(
                             f'<tr class="expand-row" data-file=\'{raw_path_js}\' data-start="{prev_end + 1}" data-end="{new_start - 1}">'
                             f'<td class="ln"></td>'
-                            f'<td class="expand-cell" onclick="expandLines(this)">'
+                            f'<td class="expand-cell" onclick="expandLines(this,event)">'
                             f'\u2195 Show lines {prev_end + 1}\u2013{new_start - 1}</td></tr>'
                         )
 
-                current["html"] += (
+                parts.append(
                     f'<tr class="hunk-header">'
                     f'<td class="ln"></td>'
                     f'<td class="hunk-code">'
@@ -95,7 +98,7 @@ def parse_and_render_diff(diff_text, cwd, root):
 
             content = escape(line[1:]) if len(line) > 1 else ""
             ln = new_ln if cls != "del" else old_ln
-            current["html"] += (
+            parts.append(
                 f'<tr class="line {cls}">'
                 f'<td class="ln">{ln}</td>'
                 f'<td class="code">{content}</td>'
@@ -107,13 +110,14 @@ def parse_and_render_diff(diff_text, cwd, root):
     if current:
         raw_path_js = current["raw_path"].replace("'", "\\'")
         last_ln = current.get("_last_new_line", 0)
-        current["html"] += (
+        parts.append(
             f'<tr class="expand-row" data-file=\'{raw_path_js}\' data-start="{last_ln + 1}" data-end="0">'
             f'<td class="ln"></td>'
-            f'<td class="expand-cell" onclick="expandLines(this)">'
+            f'<td class="expand-cell" onclick="expandLines(this,event)">'
             f'\u2193 Show more</td></tr>'
         )
-        current["html"] += "</table></div>"
+        parts.append("</table></div>")
+        current["html"] = "".join(parts)
         files.append(current)
 
     return files, total_add, total_del
