@@ -21,7 +21,7 @@ function toggleFile(i) {
     document.getElementById('chev-' + i).classList.toggle('collapsed');
 }
 
-function applyFilter(indices) {
+function applyFilter(indices, preserveScroll) {
     const pane = document.getElementById('diff-pane');
     const sections = document.querySelectorAll('.file-section');
     const total = sections.length;
@@ -45,7 +45,7 @@ function applyFilter(indices) {
     });
 
     document.getElementById('show-all-btn').style.display = '';
-    pane.scrollTo({ top: 0 });
+    if (!preserveScroll) pane.scrollTo({ top: 0 });
 }
 
 function filterToFiles(indices) {
@@ -126,12 +126,22 @@ diffPane.addEventListener('scroll', () => {
 // Async content loading and refresh
 const __c = window.__DIFF_CONFIG__;
 
+let __prevDiffHtml = null;
+
 function applyContent(data) {
     __c.diffHash = data.diffHash;
+
+    if (data.diffHtml === __prevDiffHtml) return;
+    __prevDiffHtml = data.diffHtml;
+
     document.getElementById('tb-summary').innerHTML = data.summaryHtml;
     document.getElementById('sb-count').textContent = data.fileCount;
     document.getElementById('tree').innerHTML = data.treeHtml;
-    document.getElementById('diff-pane').innerHTML = data.diffHtml;
+    const pane = document.getElementById('diff-pane');
+    const prevScroll = pane.scrollTop;
+    pane.innerHTML = data.diffHtml;
+    pane.scrollTop = prevScroll;
+    requestAnimationFrame(() => { pane.scrollTop = prevScroll; });
 
     // Restore filter from URL
     const params = new URLSearchParams(window.location.search);
@@ -141,7 +151,7 @@ function applyContent(data) {
         const indices = focus.split(',').map(Number).filter(n => !isNaN(n) && n < total);
         if (indices.length) {
             activeFilter = indices;
-            applyFilter(indices);
+            applyFilter(indices, true);
         }
     }
 }

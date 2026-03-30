@@ -2,10 +2,12 @@
 
 import os
 import subprocess
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
 SUBPROCESS_TIMEOUT = 30
+FULL_SCAN_INTERVAL = 10  # seconds between expensive git status scans
 
 
 def detect_vcs(path):
@@ -16,22 +18,51 @@ def detect_vcs(path):
         if os.path.isdir(os.path.join(current, ".git")):
             return "git", current
         current = os.path.dirname(current)
+    # Mounted arc repos (FUSE) don't have .arc directory — ask arc directly
+    try:
+        result = subprocess.run(
+            ["arc", "root"], cwd=path,
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return "arc", result.stdout.strip()
+    except Exception:
+        pass
     return None, None
+
+
+def _status_cmd(vcs):
+    if vcs == "git":
+        return [vcs, "status", "--porcelain"]
+    return [vcs, "status", "--short"]
+
+
+def _diff_stat_cmd(vcs, cached=False):
+    cmd = [vcs, "diff"]
+    if cached:
+        cmd.append("--cached")
+    if vcs == "git":
+        cmd.append("--no-renames")
+    cmd.append("--stat")
+    return cmd
+
+
+def _diff_cmd(vcs, cached=False):
+    cmd = [vcs, "diff"]
+    if cached:
+        cmd.append("--cached")
+    if vcs == "git":
+        cmd.append("--no-renames")
+    return cmd
 
 
 def get_untracked_files(vcs, path):
     """Get list of untracked file paths (relative to cwd)."""
     try:
-        if vcs == "arc":
-            result = subprocess.run(
-                ["arc", "status", "--short"], cwd=path,
-                capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT,
-            )
-        else:
-            result = subprocess.run(
-                ["git", "status", "--porcelain"], cwd=path,
-                capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT,
-            )
+        result = subprocess.run(
+            _status_cmd(vcs), cwd=path,
+            capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT,
+        )
         files = []
         max_files = 200
         for line in result.stdout.splitlines():
@@ -95,52 +126,84 @@ def _run(cmd, cwd):
     return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT).stdout
 
 
+_fp_cache = {}  # path -> {fingerprint, index_mtime, staged, untracked, last_full}
+_fp_lock = threading.Lock()
+
+
+def _git_index_mtime(root):
+    try:
+        return os.stat(os.path.join(root, ".git", "index")).st_mtime
+    except OSError:
+        return 0
+
+
 def get_diff_fingerprint(path):
-    """Return a cheap string fingerprint of current VCS state (for change detection)."""
+    """Return a cheap string fingerprint of current VCS state (for change detection).
+
+    Optimized for large repos: caches results and only runs the expensive
+    status scan every FULL_SCAN_INTERVAL seconds. Between full scans, only
+    diff --stat is run (cheap for tracked files). Works for both git and arc.
+    """
     vcs, root = detect_vcs(path)
     if not vcs:
         return ""
     try:
-        if vcs == "git":
-            with ThreadPoolExecutor(max_workers=3) as pool:
-                f1 = pool.submit(_run, ["git", "diff", "--cached", "--no-renames", "--stat"], path)
-                f2 = pool.submit(_run, ["git", "diff", "--no-renames", "--stat"], path)
-                f3 = pool.submit(_run, ["git", "status", "--porcelain"], path)
-            return f1.result() + f2.result() + f3.result()
+        now = time.monotonic()
+        index_mtime = _git_index_mtime(root) if vcs == "git" else 0
+
+        with _fp_lock:
+            entry = _fp_cache.get(path)
+
+        if entry:
+            index_changed = vcs == "git" and (index_mtime != entry['index_mtime'])
+            need_full = index_changed or (now - entry['last_full'] >= FULL_SCAN_INTERVAL)
         else:
-            return _run([vcs, "diff", "--stat"], path)
+            need_full = True
+
+        if need_full:
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                f1 = pool.submit(_run, _diff_stat_cmd(vcs, cached=True), path)
+                f2 = pool.submit(_run, _diff_stat_cmd(vcs), path)
+                f3 = pool.submit(_run, _status_cmd(vcs), path)
+            staged = f1.result()
+            unstaged = f2.result()
+            untracked = f3.result()
+            fp = staged + unstaged + untracked
+            with _fp_lock:
+                _fp_cache[path] = {
+                    'fingerprint': fp,
+                    'index_mtime': index_mtime,
+                    'staged': staged,
+                    'untracked': untracked,
+                    'last_full': now,
+                }
+            return fp
+        else:
+            unstaged = _run(_diff_stat_cmd(vcs), path)
+            return entry['staged'] + unstaged + entry['untracked']
     except Exception:
         return ""
 
 
 def get_diff(path):
-    """Return (vcs, root, staged_diff, unstaged_diff).
-
-    For git: staged = git diff --cached, unstaged = git diff + untracked.
-    For VCS without staging (e.g. svn-like): staged is empty, everything goes to unstaged.
-    """
+    """Return (vcs, root, staged_diff, unstaged_diff) for both git and arc."""
     vcs, root = detect_vcs(path)
     if not vcs:
         return None, None, "", ""
     try:
         t0 = time.monotonic()
-        if vcs == "git":
-            with ThreadPoolExecutor(max_workers=3) as pool:
-                f_staged = pool.submit(_run, ["git", "diff", "--cached", "--no-renames"], path)
-                f_unstaged = pool.submit(_run, ["git", "diff", "--no-renames"], path)
-                f_untracked = pool.submit(get_untracked_files, vcs, path)
-            staged = f_staged.result()
-            unstaged = f_unstaged.result()
-            untracked = f_untracked.result()
-        else:
-            staged = ""
-            unstaged = _run([vcs, "diff"], path)
-            untracked = get_untracked_files(vcs, path)
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            f_staged = pool.submit(_run, _diff_cmd(vcs, cached=True), path)
+            f_unstaged = pool.submit(_run, _diff_cmd(vcs), path)
+            f_untracked = pool.submit(get_untracked_files, vcs, path)
+        staged = f_staged.result()
+        unstaged = f_unstaged.result()
+        untracked = f_untracked.result()
         t1 = time.monotonic()
         if untracked:
             unstaged += make_untracked_diff(untracked, path, root)
         t2 = time.monotonic()
-        print(f"[perf] git_cmds={t1-t0:.3f}s  untracked_diff={t2-t1:.3f}s  files={len(untracked)}", flush=True)
+        print(f"[perf] vcs_cmds={t1-t0:.3f}s  untracked_diff={t2-t1:.3f}s  files={len(untracked)}", flush=True)
         return vcs, root, staged, unstaged
     except Exception:
         return vcs, root, "", ""
