@@ -74,8 +74,10 @@ class DiffHandler(BaseHTTPRequestHandler):
                 try:
                     with open(full, "r", errors="replace") as f:
                         all_lines = f.readlines()
-                    if end <= 0:
+                    if end == 0:
                         end = min(start + 20, len(all_lines))
+                    elif end < 0:
+                        end = len(all_lines)
                     end = min(end, len(all_lines))
                     for i in range(start - 1, end):
                         lines_out.append({"num": i + 1, "text": all_lines[i].rstrip("\n")})

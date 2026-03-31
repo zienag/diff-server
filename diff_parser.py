@@ -49,7 +49,7 @@ def parse_and_render_diff(diff_text, cwd, root):
                 if current.get("_first_hunk"):
                     if new_start > 1:
                         parts.append(
-                            f'<tr class="expand-row" data-file=\'{raw_path_js}\' data-start="1" data-end="{new_start - 1}">'
+                            f'<tr class="expand-row" data-file=\'{raw_path_js}\' data-start="1" data-end="{new_start - 1}" data-dir="up">'
                             f'<td class="ln"></td>'
                             f'<td class="expand-cell" onclick="expandLines(this,event)">'
                             f'\u2191 Show lines 1\u2013{new_start - 1}</td></tr>'
@@ -114,7 +114,7 @@ def parse_and_render_diff(diff_text, cwd, root):
             f'<tr class="expand-row" data-file=\'{raw_path_js}\' data-start="{last_ln + 1}" data-end="0">'
             f'<td class="ln"></td>'
             f'<td class="expand-cell" onclick="expandLines(this,event)">'
-            f'\u2193 Show more</td></tr>'
+            f'\u2193 Show more <span class="expand-hint">\u2318 all</span></td></tr>'
         )
         parts.append("</table></div>")
         current["html"] = "".join(parts)

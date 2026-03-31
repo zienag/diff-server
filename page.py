@@ -127,6 +127,9 @@ def make_shell_html(vcs, path, refresh_seconds):
         </span>
         <span style="flex:1"></span>
         <button class="show-all-btn" id="show-all-btn" style="display:none" onclick="showAll()">Show all</button>
+        <button class="wrap-btn" id="wrap-btn" onclick="toggleWrap()" title="Toggle word wrap">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M1.75 3h12.5a.75.75 0 010 1.5H1.75a.75.75 0 010-1.5zm0 8h4.5a.75.75 0 010 1.5h-4.5a.75.75 0 010-1.5zm0-4h9.862a2.39 2.39 0 01-.262 4.77h-1.1l.56-.56a.75.75 0 10-1.06-1.06l-1.82 1.82a.75.75 0 000 1.06l1.82 1.82a.75.75 0 001.06-1.06l-.56-.56H11.35a3.89 3.89 0 00.412-7.77H1.75a.75.75 0 010-1.5z"/></svg>
+        </button>
         <button class="theme-btn" id="theme-btn" onclick="cycleTheme()" title="Toggle theme">
             <svg id="theme-icon-dark" viewBox="0 0 16 16" width="14" height="14" fill="currentColor" style="display:none"><path d="M6.2 1.2a.75.75 0 00-1.06.04 7 7 0 109.58 1.34.75.75 0 00-1.04-.22 5.5 5.5 0 01-7.52-1.2z"/></svg>
             <svg id="theme-icon-light" viewBox="0 0 16 16" width="14" height="14" fill="currentColor" style="display:none"><path d="M8 1.5a.75.75 0 01.75.75v1a.75.75 0 01-1.5 0v-1A.75.75 0 018 1.5zm0 9a2.5 2.5 0 100-5 2.5 2.5 0 000 5zm5.66-5.16a.75.75 0 010 1.06l-.7.71a.75.75 0 11-1.07-1.06l.71-.71a.75.75 0 011.06 0zM14.5 8a.75.75 0 01-.75.75h-1a.75.75 0 010-1.5h1A.75.75 0 0114.5 8zm-2.84 5.66a.75.75 0 01-1.06 0l-.71-.7a.75.75 0 111.06-1.07l.71.71a.75.75 0 010 1.06zM8 14.5a.75.75 0 01-.75-.75v-1a.75.75 0 011.5 0v1A.75.75 0 018 14.5zm-5.66-2.84a.75.75 0 010-1.06l.7-.71a.75.75 0 111.07 1.06l-.71.71a.75.75 0 01-1.06 0zM1.5 8a.75.75 0 01.75-.75h1a.75.75 0 010 1.5h-1A.75.75 0 011.5 8zm2.84-5.66a.75.75 0 011.06 0l.71.7a.75.75 0 11-1.06 1.07l-.71-.71a.75.75 0 010-1.06z"/></svg>

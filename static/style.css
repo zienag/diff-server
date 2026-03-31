@@ -326,6 +326,8 @@ html, body {
     font-size: 10px; opacity: 0.5;
 }
 .line .code { padding: 0 16px; white-space: pre; }
+.wrap-lines .line .code { white-space: pre-wrap; word-break: break-all; }
+.wrap-lines .file-body { overflow-x: hidden; }
 
 .line.ctx .code { color: var(--fg-secondary); }
 .line.ctx .ln { background: var(--bg); }
@@ -365,6 +367,7 @@ html, body {
     transition: opacity 0.15s;
 }
 .expand-cell:hover { opacity: 1; }
+.expand-hint { opacity: 0.4; font-size: 10px; margin-left: 8px; }
 .line.expanded { background: var(--bg-surface); }
 .line.expanded .ln { opacity: 0.3; }
 
@@ -442,3 +445,15 @@ html, body {
 }
 .theme-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
 .theme-btn svg { display: block; }
+
+.wrap-btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px;
+    background: none; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); cursor: pointer;
+    color: var(--fg-tertiary); transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+.wrap-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+.wrap-btn.active { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+.wrap-btn svg { display: block; }

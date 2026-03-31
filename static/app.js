@@ -14,6 +14,17 @@ function cycleTheme() {
 }
 applyTheme(localStorage.getItem('diff-theme') || 'auto');
 
+function applyWrap(on) {
+    document.getElementById('diff-pane').classList.toggle('wrap-lines', on);
+    document.getElementById('wrap-btn').classList.toggle('active', on);
+}
+function toggleWrap() {
+    const on = !document.getElementById('diff-pane').classList.contains('wrap-lines');
+    localStorage.setItem('diff-wrap', on ? '1' : '0');
+    applyWrap(on);
+}
+applyWrap(localStorage.getItem('diff-wrap') === '1');
+
 let activeFilter = null;
 
 function toggleFile(i) {
@@ -186,23 +197,50 @@ async function expandLines(cell, event) {
     const file = row.dataset.file;
     const start = parseInt(row.dataset.start);
     const end = parseInt(row.dataset.end);
-    const showAll = event && event.shiftKey;
+    const dir = row.dataset.dir || '';
+    const showAll = event && (event.shiftKey || event.metaKey);
 
+    let fetchStart = start;
     let fetchEnd = end;
-    if (!showAll && end > 0 && (end - start + 1) > 20) {
-        fetchEnd = start + 19;
+
+    if (dir === 'up' && !showAll && end > 0 && (end - start + 1) > 20) {
+        fetchStart = end - 19;
+    } else if (end <= 0) {
+        if (showAll) fetchEnd = -1;
     }
 
     try {
         const r = await fetch('/context?path=' + encodeURIComponent(__c.repoPath) +
             '&file=' + encodeURIComponent(file) +
-            '&start=' + start + '&end=' + fetchEnd);
+            '&start=' + fetchStart + '&end=' + fetchEnd);
         const data = await r.json();
         if (!data.lines || !data.lines.length) {
             row.remove();
             return;
         }
+
         const frag = document.createDocumentFragment();
+        const firstNum = data.lines[0].num;
+        const lastNum = data.lines[data.lines.length - 1].num;
+
+        if (dir === 'up' && firstNum > start) {
+            const newRow = document.createElement('tr');
+            newRow.className = 'expand-row';
+            newRow.dataset.file = file;
+            newRow.dataset.start = start;
+            newRow.dataset.end = firstNum - 1;
+            newRow.dataset.dir = 'up';
+            const tdLn = document.createElement('td');
+            tdLn.className = 'ln';
+            const tdCell = document.createElement('td');
+            tdCell.className = 'expand-cell';
+            tdCell.onclick = function(e) { expandLines(this, e); };
+            tdCell.textContent = '\u2191 Show lines ' + start + '\u2013' + (firstNum - 1);
+            newRow.appendChild(tdLn);
+            newRow.appendChild(tdCell);
+            frag.appendChild(newRow);
+        }
+
         data.lines.forEach(l => {
             const tr = document.createElement('tr');
             tr.className = 'line ctx expanded';
@@ -217,28 +255,34 @@ async function expandLines(cell, event) {
             frag.appendChild(tr);
         });
 
-        const lastNum = data.lines[data.lines.length - 1].num;
-        const hasRemaining = end > 0 ? (lastNum < end) : (data.lines.length >= 20);
-        if (hasRemaining) {
-            const newStart = lastNum + 1;
-            const newRow = document.createElement('tr');
-            newRow.className = 'expand-row';
-            newRow.dataset.file = file;
-            newRow.dataset.start = newStart;
-            newRow.dataset.end = end;
-            const tdLn = document.createElement('td');
-            tdLn.className = 'ln';
-            const tdCell = document.createElement('td');
-            tdCell.className = 'expand-cell';
-            tdCell.onclick = function(e) { expandLines(this, e); };
-            if (end > 0) {
-                tdCell.textContent = '\u2195 Show lines ' + newStart + '\u2013' + end;
-            } else {
-                tdCell.textContent = '\u2193 Show more';
+        if (dir !== 'up') {
+            const hasRemaining = end > 0 ? (lastNum < end) : (!showAll && data.lines.length >= 20);
+            if (hasRemaining) {
+                const newStart = lastNum + 1;
+                const newRow = document.createElement('tr');
+                newRow.className = 'expand-row';
+                newRow.dataset.file = file;
+                newRow.dataset.start = newStart;
+                newRow.dataset.end = end;
+                const tdLn = document.createElement('td');
+                tdLn.className = 'ln';
+                const tdCell = document.createElement('td');
+                tdCell.className = 'expand-cell';
+                tdCell.onclick = function(e) { expandLines(this, e); };
+                if (end > 0) {
+                    tdCell.textContent = '\u2195 Show lines ' + newStart + '\u2013' + end;
+                } else {
+                    tdCell.innerHTML = '\u2193 Show more <span class="expand-hint">\u2318 all</span>';
+                }
+                newRow.appendChild(tdLn);
+                newRow.appendChild(tdCell);
+                frag.appendChild(newRow);
             }
-            newRow.appendChild(tdLn);
-            newRow.appendChild(tdCell);
-            frag.appendChild(newRow);
+        }
+
+        const next = row.nextElementSibling;
+        if (next && next.classList.contains('hunk-header')) {
+            next.remove();
         }
 
         row.replaceWith(frag);
