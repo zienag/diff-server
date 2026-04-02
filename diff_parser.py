@@ -20,12 +20,24 @@ def parse_and_render_diff(diff_text, cwd, root):
     total_add = 0
     total_del = 0
 
+    def _finalize(cur, p):
+        raw_path_js = cur["raw_path"].replace("'", "\\'")
+        last_ln = cur.get("_last_new_line", 0)
+        if last_ln > 0:
+            p.append(
+                f'<tr class="expand-row" data-file=\'{raw_path_js}\' data-start="{last_ln + 1}" data-end="0">'
+                f'<td class="ln"></td>'
+                f'<td class="expand-cell" onclick="expandLines(this,event)">'
+                f'\u2193 Show more <span class="expand-hint">\u2318 all</span></td></tr>'
+            )
+        p.append("</table></div>")
+        cur["html"] = "".join(p)
+        files.append(cur)
+
     for line in diff_text.splitlines():
         if line.startswith("diff ") or line.startswith("--- "):
             if current:
-                parts.append("</table></div>")
-                current["html"] = "".join(parts)
-                files.append(current)
+                _finalize(current, parts)
                 current = None
                 parts = None
         if line.startswith("+++ "):
@@ -108,16 +120,6 @@ def parse_and_render_diff(diff_text, cwd, root):
                 current["_last_new_line"] = current.get("_new", 1) - 1
 
     if current:
-        raw_path_js = current["raw_path"].replace("'", "\\'")
-        last_ln = current.get("_last_new_line", 0)
-        parts.append(
-            f'<tr class="expand-row" data-file=\'{raw_path_js}\' data-start="{last_ln + 1}" data-end="0">'
-            f'<td class="ln"></td>'
-            f'<td class="expand-cell" onclick="expandLines(this,event)">'
-            f'\u2193 Show more <span class="expand-hint">\u2318 all</span></td></tr>'
-        )
-        parts.append("</table></div>")
-        current["html"] = "".join(parts)
-        files.append(current)
+        _finalize(current, parts)
 
     return files, total_add, total_del
