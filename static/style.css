@@ -121,11 +121,38 @@ html, body {
 .tb-dot {
     width: 8px; height: 8px; border-radius: 50%;
     background: var(--fg-tertiary);
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: background 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    flex-shrink: 0;
 }
 .tb-dot.active {
     background: var(--green);
     box-shadow: 0 0 8px var(--green), 0 0 2px var(--green);
+}
+.tb-dot.running {
+    background: var(--amber);
+    box-shadow: 0 0 12px var(--amber), 0 0 3px var(--amber);
+    animation: running-pulse 0.7s ease-in-out infinite;
+}
+@keyframes running-pulse {
+    0%, 100% { transform: scale(1); opacity: 0.85; }
+    50%      { transform: scale(1.35); opacity: 1; }
+}
+
+.tb-activity-label {
+    font-family: var(--mono); font-size: 10px;
+    color: var(--amber);
+    background: var(--accent-dim);
+    padding: 2px 6px; border-radius: 3px;
+    letter-spacing: 0.5px; font-weight: 500;
+    opacity: 0; transform: translateX(6px);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    max-width: 0; overflow: hidden; white-space: nowrap;
+    pointer-events: none;
+}
+.tb-activity-label.visible {
+    opacity: 1; transform: translateX(0);
+    max-width: 160px;
 }
 
 .show-all-btn {
@@ -296,6 +323,20 @@ html, body {
 .fh-chev.collapsed { transform: rotate(-90deg); }
 .fh-dir { color: var(--fg-tertiary); font-weight: 400; }
 .fh-name { color: var(--fg); font-weight: 600; }
+.fh-rename { color: var(--fg-tertiary); font-weight: 400; font-size: 0.85em; }
+.fh-copy {
+    display: flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px;
+    background: none; border: 1px solid transparent;
+    border-radius: 4px; cursor: pointer;
+    color: var(--fg-tertiary); opacity: 0;
+    transition: all 0.15s ease;
+    flex-shrink: 0; padding: 0;
+}
+.file-header:hover .fh-copy { opacity: 0.6; }
+.fh-copy:hover { opacity: 1 !important; color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+.fh-copy.copied { opacity: 1 !important; color: var(--green); border-color: var(--green); background: var(--green-bg); }
+.fh-copy svg { display: block; }
 .fh-stats {
     margin-left: auto;
     display: flex; align-items: center; gap: 6px;
@@ -457,3 +498,23 @@ html, body {
 .wrap-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
 .wrap-btn.active { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
 .wrap-btn svg { display: block; }
+
+.auto-btn, .refresh-btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px;
+    background: none; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); cursor: pointer;
+    color: var(--fg-tertiary); transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+.auto-btn:hover, .refresh-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+.auto-btn svg, .refresh-btn svg { display: block; }
+.auto-btn.active {
+    color: var(--green); border-color: var(--green-border);
+    background: var(--green-bg);
+}
+.auto-btn.paused {
+    color: var(--amber); border-color: var(--amber); background: var(--accent-dim);
+}
+.refresh-btn.spinning svg { animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }

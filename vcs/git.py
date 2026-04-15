@@ -7,6 +7,11 @@ from concurrent.futures import ThreadPoolExecutor
 
 from vcs.base import run_cmd, collect_diff, SUBPROCESS_TIMEOUT, FULL_SCAN_INTERVAL
 
+# Gap between END of a diff burst and START of the next one. Applies across
+# clients (multiple tabs). Short here because git is fast, so staleness is
+# capped at ~1s anyway.
+DIFF_COOLDOWN_S = 1.0
+
 
 class GitBackend:
     name = "git"
@@ -15,6 +20,9 @@ class GitBackend:
         self.root = root
         self._fp_cache = {}
         self._fp_lock = threading.Lock()
+        self._diff_cache = None   # (staged, unstaged)
+        self._diff_end = 0.0
+        self._diff_lock = threading.Lock()
 
     @staticmethod
     def has_root_marker(path):
@@ -82,9 +90,17 @@ class GitBackend:
             return ""
 
     def get_diff(self, path):
-        return collect_diff(
-            self._diff_cmd(cached=True),
-            self._diff_cmd(),
-            self._status_cmd(),
-            path, self.root,
-        )
+        with self._diff_lock:
+            age = time.monotonic() - self._diff_end
+            if self._diff_cache is not None and age < DIFF_COOLDOWN_S:
+                print(f"[git]  get_diff CACHED age={age*1000:.0f}ms (cooldown {DIFF_COOLDOWN_S}s)", flush=True)
+                return self._diff_cache
+            result = collect_diff(
+                self._diff_cmd(cached=True),
+                self._diff_cmd(),
+                self._status_cmd(),
+                path, self.root,
+            )
+            self._diff_cache = result
+            self._diff_end = time.monotonic()
+            return result

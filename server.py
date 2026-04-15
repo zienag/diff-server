@@ -6,10 +6,16 @@ import json
 import os
 import time
 import urllib.parse
+from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 
-from vcs import detect_vcs, get_diff, get_diff_fingerprint
+
+def _log(kind, msg):
+    ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    print(f"[{ts}] {kind:>8} {msg}", flush=True)
+
+from vcs import detect_vcs, get_diff, get_diff_fingerprint, get_activity, get_retry_after
 from page import make_shell_html, make_content
 
 PORT = 8777
@@ -37,6 +43,10 @@ class DiffHandler(BaseHTTPRequestHandler):
 
         if parsed.path == "/hash":
             self._handle_hash(params)
+            return
+
+        if parsed.path == "/activity":
+            self._handle_activity()
             return
 
         if parsed.path == "/content":
@@ -89,10 +99,22 @@ class DiffHandler(BaseHTTPRequestHandler):
 
     def _handle_hash(self, params):
         path = params.get("path", [None])[0]
-        if path:
-            path = os.path.expanduser(path)
-            fingerprint = get_diff_fingerprint(path)
-            self._json_response({"hash": hashlib.md5(fingerprint.encode()).hexdigest()})
+        if not path:
+            self._json_response({"hash": "", "retryAfter": 0})
+            return
+        path = os.path.expanduser(path)
+        t0 = time.monotonic()
+        fingerprint = get_diff_fingerprint(path)
+        dt = time.monotonic() - t0
+        h = hashlib.md5(fingerprint.encode()).hexdigest()
+        retry_after = get_retry_after(path)
+        _log("/hash", f"dt={dt*1000:.0f}ms  fp_len={len(fingerprint)}  "
+                     f"hash={h[:8]}  retryAfter={retry_after:.1f}s")
+        self._json_response({"hash": h, "retryAfter": retry_after})
+
+    def _handle_activity(self):
+        count, labels = get_activity()
+        self._json_response({"running": count, "cmds": labels})
 
     def _handle_content(self, params):
         path = params.get("path", [None])[0]
@@ -108,7 +130,8 @@ class DiffHandler(BaseHTTPRequestHandler):
         t1 = time.monotonic()
         result = make_content(vcs, root, staged, unstaged, path)
         t2 = time.monotonic()
-        print(f"[perf] get_diff={t1-t0:.3f}s  render={t2-t1:.3f}s  staged={len(staged)}b  unstaged={len(unstaged)}b", flush=True)
+        _log("/content", f"get_diff={(t1-t0)*1000:.0f}ms  render={(t2-t1)*1000:.0f}ms  "
+                         f"staged={len(staged)}b  unstaged={len(unstaged)}b  dhash={result['diffHash'][:8]}")
         self._json_response(result)
 
     def _handle_page(self, params):
@@ -149,8 +172,6 @@ class DiffHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def log_message(self, fmt, *args):
-        if any(x in args[0] for x in ['/content', '/hash']) if args else False:
-            return
         pass
 
 

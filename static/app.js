@@ -32,6 +32,14 @@ function toggleFile(i) {
     document.getElementById('chev-' + i).classList.toggle('collapsed');
 }
 
+function copyPath(btn, event) {
+    event.stopPropagation();
+    navigator.clipboard.writeText(btn.dataset.path).then(() => {
+        btn.classList.add('copied');
+        setTimeout(() => btn.classList.remove('copied'), 1200);
+    });
+}
+
 function applyFilter(indices, preserveScroll) {
     const pane = document.getElementById('diff-pane');
     const sections = document.querySelectorAll('.file-section');
@@ -140,8 +148,6 @@ const __c = window.__DIFF_CONFIG__;
 let __prevDiffHtml = null;
 
 function applyContent(data) {
-    __c.diffHash = data.diffHash;
-
     if (data.diffHtml === __prevDiffHtml) return;
     __prevDiffHtml = data.diffHtml;
 
@@ -177,20 +183,128 @@ async function loadContent() {
 
 loadContent();
 
-async function checkForUpdates() {
+// Lazy-mode when tab is hidden: back off polling intervals dramatically.
+const HIDDEN_HASH_INTERVAL_MS = 60000;   // /hash: 60s when hidden
+const HIDDEN_ACTIVITY_INTERVAL_MS = 5000; // /activity: skipped, just a wake-check
+const ACTIVITY_POLL_MS = 600;             // calm cadence — not a strobe light
+let __updateTimer = null;
+let __activityTimer = null;
+// Last fingerprint seen from /hash. Compared across polls to decide whether to
+// re-fetch /content. NOTE: this is NOT the same value as content.diffHash — the
+// fingerprint is md5(stat+status), content.diffHash is md5(full diff text).
+// Never compare them directly; that was causing /content to fire on every poll.
+let __lastFp = null;
+
+// Auto-refresh toggle. When OFF, we never fire /hash on a timer — only on
+// manual click of the refresh button. Persisted so the choice survives reloads.
+let __autoOn = localStorage.getItem('diff-auto') !== '0';
+
+function applyAutoState() {
+    const btn = document.getElementById('auto-btn');
+    const refreshBtn = document.getElementById('refresh-btn');
+    const onIcon = document.getElementById('auto-icon-on');
+    const offIcon = document.getElementById('auto-icon-off');
+    btn.classList.toggle('active', __autoOn);
+    btn.classList.toggle('paused', !__autoOn);
+    btn.title = __autoOn ? 'Auto-refresh: ON (click to pause)' : 'Auto-refresh: PAUSED (click to resume)';
+    onIcon.style.display = __autoOn ? '' : 'none';
+    offIcon.style.display = __autoOn ? 'none' : '';
+    refreshBtn.style.display = __autoOn ? 'none' : '';
+}
+
+function toggleAuto() {
+    __autoOn = !__autoOn;
+    localStorage.setItem('diff-auto', __autoOn ? '1' : '0');
+    applyAutoState();
+    if (__autoOn) {
+        if (__updateTimer) { clearTimeout(__updateTimer); __updateTimer = null; }
+        checkForUpdates();
+    }
+}
+
+async function manualRefresh() {
+    const btn = document.getElementById('refresh-btn');
+    btn.classList.add('spinning');
+    try { await loadContent(); } catch(e) {}
     try {
-        const dot = document.getElementById('refresh-dot');
-        dot.classList.add('active');
         const r = await fetch('/hash?path=' + encodeURIComponent(__c.repoPath));
         const d = await r.json();
-        if (__c.diffHash && d.hash !== __c.diffHash) {
-            await loadContent();
-        }
-        setTimeout(() => dot.classList.remove('active'), 300);
+        __lastFp = d.hash;
     } catch(e) {}
-    setTimeout(checkForUpdates, __c.refreshSeconds * 1000);
+    setTimeout(() => btn.classList.remove('spinning'), 200);
 }
-setTimeout(checkForUpdates, __c.refreshSeconds * 1000);
+
+applyAutoState();
+
+async function checkForUpdates() {
+    __updateTimer = null;
+    if (!__autoOn) return;  // paused — caller must toggleAuto() to resume
+    let serverHint = 0;
+    if (!document.hidden) {
+        try {
+            const r = await fetch('/hash?path=' + encodeURIComponent(__c.repoPath));
+            const d = await r.json();
+            if (__lastFp !== null && d.hash !== __lastFp) {
+                await loadContent();
+            }
+            __lastFp = d.hash;
+            // Server says "don't bother polling before this many seconds" —
+            // covers slow VCS backends whose cooldown window exceeds our
+            // client poll interval, preventing wasteful queued requests.
+            serverHint = typeof d.retryAfter === 'number' ? d.retryAfter * 1000 : 0;
+        } catch(e) {}
+    }
+    const base = document.hidden ? HIDDEN_HASH_INTERVAL_MS : __c.refreshSeconds * 1000;
+    const delay = Math.max(base, serverHint);
+    __updateTimer = setTimeout(checkForUpdates, delay);
+}
+if (__autoOn) {
+    __updateTimer = setTimeout(checkForUpdates, __c.refreshSeconds * 1000);
+}
+
+// Live VCS-subprocess activity indicator — calm poll, no VCS work server-side.
+async function pollActivity() {
+    __activityTimer = null;
+    if (!document.hidden) {
+        try {
+            const r = await fetch('/activity');
+            const d = await r.json();
+            const dot = document.getElementById('refresh-dot');
+            const label = document.getElementById('activity-label');
+            const running = d.running > 0;
+            dot.classList.toggle('running', running);
+            if (running) {
+                const cmd = (d.cmds && d.cmds[0]) || 'vcs';
+                const n = d.cmds && d.cmds.length > 1 ? ` \u00d7${d.cmds.length}` : '';
+                label.textContent = cmd + n;
+                label.classList.add('visible');
+                dot.title = 'Running: ' + (d.cmds || []).join(', ');
+            } else {
+                label.classList.remove('visible');
+                dot.title = 'Idle';
+            }
+        } catch(e) {}
+    }
+    const delay = document.hidden ? HIDDEN_ACTIVITY_INTERVAL_MS : ACTIVITY_POLL_MS;
+    __activityTimer = setTimeout(pollActivity, delay);
+}
+__activityTimer = setTimeout(pollActivity, 0);
+
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+        // Wake: cancel pending lazy timers and fire immediately for fresh data.
+        if (__updateTimer) { clearTimeout(__updateTimer); __updateTimer = null; }
+        if (__activityTimer) { clearTimeout(__activityTimer); __activityTimer = null; }
+        if (__autoOn) checkForUpdates();
+        pollActivity();
+    } else {
+        // Sleep: clear any running-indicator state so it doesn't look "stuck".
+        const dot = document.getElementById('refresh-dot');
+        const label = document.getElementById('activity-label');
+        if (dot) { dot.classList.remove('running'); dot.classList.remove('active'); }
+        if (label) label.classList.remove('visible');
+    }
+});
 
 async function expandLines(cell, event) {
     const row = cell.closest('tr');

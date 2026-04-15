@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -10,11 +11,56 @@ FULL_SCAN_INTERVAL = 10
 MAX_UNTRACKED_FILE_SIZE = 256 * 1024
 MAX_UNTRACKED_FILES = 200
 
+_activity_lock = threading.Lock()
+_active_count = 0
+_active_cmds = []  # list of (cmd_str, started_monotonic)
+
+
+class _Activity:
+    """Context manager that tracks in-flight VCS subprocess calls."""
+    def __init__(self, cmd):
+        self.label = cmd[0] if isinstance(cmd, (list, tuple)) and cmd else str(cmd)
+
+    def __enter__(self):
+        global _active_count
+        with _activity_lock:
+            _active_count += 1
+            _active_cmds.append((self.label, time.monotonic()))
+        return self
+
+    def __exit__(self, *exc):
+        global _active_count
+        with _activity_lock:
+            _active_count -= 1
+            for i, (lbl, _) in enumerate(_active_cmds):
+                if lbl == self.label:
+                    _active_cmds.pop(i)
+                    break
+
+
+def get_activity():
+    """Return (running_count, [labels])."""
+    with _activity_lock:
+        return _active_count, [lbl for lbl, _ in _active_cmds]
+
+
+def run_subprocess(cmd, cwd, **kwargs):
+    """Run a subprocess while marking activity — use for every VCS command."""
+    t0 = time.monotonic()
+    with _Activity(cmd):
+        result = subprocess.run(cmd, cwd=cwd, **kwargs)
+    dt = time.monotonic() - t0
+    try:
+        print(f"[{time.strftime('%H:%M:%S')}.{int((t0%1)*1000):03d}]   subproc {' '.join(cmd)}  dt={dt*1000:.0f}ms", flush=True)
+    except Exception:
+        pass
+    return result
+
 
 def run_cmd(cmd, cwd):
     """Run a command and return stdout, with timeout."""
-    return subprocess.run(
-        cmd, cwd=cwd, capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT,
+    return run_subprocess(
+        cmd, cwd, capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT,
     ).stdout
 
 
@@ -53,8 +99,8 @@ def make_untracked_diff(files, cwd, root):
 def parse_untracked_files(status_cmd, path):
     """Run status command and parse untracked (??) file entries."""
     try:
-        result = subprocess.run(
-            status_cmd, cwd=path,
+        result = run_subprocess(
+            status_cmd, path,
             capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT,
         )
         files = []

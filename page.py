@@ -28,11 +28,18 @@ def _render_file_sections(files, idx_offset=0):
         bar = diff_bar_html(adds, dels)
 
         dir_part = f'<span class="fh-dir">{escape(fdir)}/</span>' if fdir else ''
+        rename_part = ''
+        if f.get("renamed_from"):
+            rename_part = f'<span class="fh-rename"> \u2190 {escape(f["renamed_from"])}</span>'
+        escaped_path = escape(f["path"], quote=True)
         html += f'''
         <div class="file-section" id="file-{i}">
             <div class="file-header" onclick="toggleFile({i})">
                 <span class="fh-chev" id="chev-{i}">{SVG_CHEVRON_DOWN}</span>
-                {dir_part}<span class="fh-name">{escape(fname)}</span>
+                {dir_part}<span class="fh-name">{escape(fname)}</span>{rename_part}
+                <button class="fh-copy" data-path="{escaped_path}" onclick="copyPath(this,event)" title="Copy path">
+                    <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25zM5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25z"/></svg>
+                </button>
                 <span class="fh-stats">{stat_text} {bar}</span>
             </div>
             <div class="file-body" id="body-{i}">{f["html"]}</div>
@@ -127,6 +134,13 @@ def make_shell_html(vcs, path, refresh_seconds):
         </span>
         <span style="flex:1"></span>
         <button class="show-all-btn" id="show-all-btn" style="display:none" onclick="showAll()">Show all</button>
+        <button class="auto-btn" id="auto-btn" onclick="toggleAuto()" title="Toggle auto-refresh">
+            <svg id="auto-icon-on" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg>
+            <svg id="auto-icon-off" viewBox="0 0 16 16" width="14" height="14" fill="currentColor" style="display:none"><path d="M4 2.75v10.5a.75.75 0 001.126.648l9-5.25a.75.75 0 000-1.296l-9-5.25A.75.75 0 004 2.75z"/></svg>
+        </button>
+        <button class="refresh-btn" id="refresh-btn" onclick="manualRefresh()" title="Refresh now" style="display:none">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M8 2.5a5.487 5.487 0 00-4.131 1.869l1.204 1.204A.25.25 0 014.896 6H1.25A.25.25 0 011 5.75V2.104a.25.25 0 01.427-.177l1.38 1.38A7.001 7.001 0 0114.95 7.16a.75.75 0 11-1.49.178A5.501 5.501 0 008 2.5zm-6.47 6.15a.75.75 0 01.84.66 5.501 5.501 0 009.76 2.424l-1.204-1.204a.25.25 0 01.177-.427h3.647a.25.25 0 01.25.25v3.646a.25.25 0 01-.427.177l-1.38-1.38A7.001 7.001 0 011.05 9.49a.75.75 0 01.66-.84z"/></svg>
+        </button>
         <button class="wrap-btn" id="wrap-btn" onclick="toggleWrap()" title="Toggle word wrap">
             <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M1.75 3h12.5a.75.75 0 010 1.5H1.75a.75.75 0 010-1.5zm0 8h4.5a.75.75 0 010 1.5h-4.5a.75.75 0 010-1.5zm0-4h9.862a2.39 2.39 0 01-.262 4.77h-1.1l.56-.56a.75.75 0 10-1.06-1.06l-1.82 1.82a.75.75 0 000 1.06l1.82 1.82a.75.75 0 001.06-1.06l-.56-.56H11.35a3.89 3.89 0 00.412-7.77H1.75a.75.75 0 010-1.5z"/></svg>
         </button>
@@ -135,7 +149,8 @@ def make_shell_html(vcs, path, refresh_seconds):
             <svg id="theme-icon-light" viewBox="0 0 16 16" width="14" height="14" fill="currentColor" style="display:none"><path d="M8 1.5a.75.75 0 01.75.75v1a.75.75 0 01-1.5 0v-1A.75.75 0 018 1.5zm0 9a2.5 2.5 0 100-5 2.5 2.5 0 000 5zm5.66-5.16a.75.75 0 010 1.06l-.7.71a.75.75 0 11-1.07-1.06l.71-.71a.75.75 0 011.06 0zM14.5 8a.75.75 0 01-.75.75h-1a.75.75 0 010-1.5h1A.75.75 0 0114.5 8zm-2.84 5.66a.75.75 0 01-1.06 0l-.71-.7a.75.75 0 111.06-1.07l.71.71a.75.75 0 010 1.06zM8 14.5a.75.75 0 01-.75-.75v-1a.75.75 0 011.5 0v1A.75.75 0 018 14.5zm-5.66-2.84a.75.75 0 010-1.06l.7-.71a.75.75 0 111.07 1.06l-.71.71a.75.75 0 01-1.06 0zM1.5 8a.75.75 0 01.75-.75h1a.75.75 0 010 1.5h-1A.75.75 0 011.5 8zm2.84-5.66a.75.75 0 011.06 0l.71.7a.75.75 0 11-1.06 1.07l-.71-.71a.75.75 0 010-1.06z"/></svg>
             <svg id="theme-icon-auto" viewBox="0 0 16 16" width="14" height="14" fill="currentColor" style="display:none"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zM3 8a5 5 0 015-5v10a5 5 0 01-5-5z"/></svg>
         </button>
-        <span class="tb-dot" id="refresh-dot"></span>
+        <span class="tb-activity-label" id="activity-label"></span>
+        <span class="tb-dot" id="refresh-dot" title="Idle"></span>
     </div>
     <div class="main">
         <div class="sidebar" id="sidebar">

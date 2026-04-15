@@ -2,16 +2,18 @@
 
 import os
 
+from vcs.base import get_activity
 from vcs.mono import MonoBackend
 from vcs.git import GitBackend
 
 _BACKENDS = [MonoBackend, GitBackend]  # monorepo VCS preferred over git at the same level
-_backend_cache = {}  # path -> VCSBackend | None
+_root_backends = {}  # root -> backend instance (one poller per root)
+_path_cache = {}     # path -> backend (fast lookup)
 
 
 def _get_backend(path):
-    if path in _backend_cache:
-        return _backend_cache[path]
+    if path in _path_cache:
+        return _path_cache[path]
 
     # Walk up directories, checking all backends at each level.
     # Closest root wins; monorepo VCS preferred over git at the same level.
@@ -19,20 +21,23 @@ def _get_backend(path):
     while current != "/":
         for cls in _BACKENDS:
             if cls.has_root_marker(current):
-                backend = cls(current)
-                _backend_cache[path] = backend
-                return backend
+                root = current
+                if root not in _root_backends:
+                    _root_backends[root] = cls(root)
+                _path_cache[path] = _root_backends[root]
+                return _root_backends[root]
         current = os.path.dirname(current)
 
     # Fallback detection (e.g., FUSE mounts without marker directories)
     for cls in _BACKENDS:
         root = cls.detect_fallback(path)
         if root:
-            backend = cls(root)
-            _backend_cache[path] = backend
-            return backend
+            if root not in _root_backends:
+                _root_backends[root] = cls(root)
+            _path_cache[path] = _root_backends[root]
+            return _root_backends[root]
 
-    _backend_cache[path] = None
+    _path_cache[path] = None
     return None
 
 
@@ -50,6 +55,18 @@ def get_diff_fingerprint(path):
     if not backend:
         return ""
     return backend.fingerprint(path)
+
+
+def get_retry_after(path):
+    """Seconds until backend is ready to run a fresh burst. 0 if ready now."""
+    import time
+    backend = _get_backend(path)
+    if not backend:
+        return 0.0
+    end = getattr(backend, "_fp_end", 0.0)
+    cooldown = getattr(backend, "_fp_cooldown", 0.0)
+    ready_at = end + cooldown
+    return max(0.0, ready_at - time.monotonic())
 
 
 def get_diff(path):
