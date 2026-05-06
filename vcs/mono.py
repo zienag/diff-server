@@ -2,19 +2,22 @@
 
 Fingerprint strategy:
   1. FUSE xattr counter — O(1), no subprocess. When the VFS counter is
-     readable, it IS the fingerprint. A mutation to any watched path
-     increments it, so no status scan is needed to detect change.
-  2. Fallback (nativefs / no xattr) — `info --json` for cheap commit-hash
-     check + periodic cached status scan within adaptive cooldown.
+     readable, it IS the fingerprint. Counter increments on any tracked
+     mutation so the xattr alone is a complete dirty signal.
+  2. Fallback (nativefs / no xattr) — layered:
+     • base = `info --json` hash + `status --short` output (throttled by
+       adaptive cooldown — subprocess is expensive on big nativefs)
+     • live overlay = lstat(mtime, size) of every file that was modified
+       per the last status run. Detects content edits to already-modified
+       files cheaply (~0.01ms per stat) without re-running status.
 
-Full diff (`get_diff`) runs subprocess bursts only on cache miss. Cache key
-is the xattr counter snapshot captured BEFORE the burst runs (so changes
-that happen mid-burst drive a refresh next call). When xattr is unavailable
-we fall back to a time-based cooldown window so N tabs polling at once do
-not multiply VCS load.
+Full diff (`get_diff`) is keyed on the fingerprint string. Whenever the
+fingerprint changes, the cache invalidates and fresh `diff` subprocesses
+run. The mutex serializes concurrent callers, so N tabs polling at once
+share one subprocess burst per fingerprint.
 
 Adaptive cooldown: penalty = max(base, duration * stretch). Slow repos rest
-longer between bursts — VCS subprocesses stay <1/3 of wall-clock.
+longer between status runs — VCS subprocesses stay <1/3 of wall-clock.
 """
 
 import json
@@ -22,7 +25,7 @@ import os
 import threading
 import time
 
-from vcs.base import run_cmd, run_subprocess, parse_untracked_files, make_untracked_diff
+from vcs.base import run_cmd, run_subprocess, parse_untracked_files, make_untracked_diff, SUBPROCESS_TIMEOUT
 
 LOCK_GAP = 0.3
 COOLDOWN_S = 3.0
@@ -42,15 +45,18 @@ class MonoBackend:
         self.root = root
         self._mutex = threading.Lock()
 
-        # Full diff cache. Key: xattr counter snapshot at compute time
-        # (or None when falling back to time cooldown).
+        # Full diff cache. Keyed by fingerprint string so it's invalidated
+        # as soon as the fingerprint changes (xattr counter or status text).
         self._diff_cache = None
-        self._diff_cache_counter = None
-        self._diff_end = 0.0
-        self._diff_cooldown = COOLDOWN_S
+        self._diff_cache_key = None
 
-        # Fingerprint fallback cache (no xattr path only).
-        self._fp_cache = None
+        # Fingerprint fallback state (no xattr path only):
+        #   _fp_base   — cached subprocess portion (hash + status output)
+        #   _fp_files  — list of files from last status, for mtime polling
+        #   _fp_last   — last fingerprint returned (for get_diff cache key)
+        self._fp_base = None
+        self._fp_files = []
+        self._fp_last = None
         self._fp_end = 0.0
         self._fp_cooldown = COOLDOWN_S
 
@@ -89,8 +95,7 @@ class MonoBackend:
                 if info.get("repository_type") == "nativefs":
                     self._is_nativefs = True
                     self._fp_cooldown = max(self._fp_cooldown, NATIVEFS_COOLDOWN_S)
-                    self._diff_cooldown = max(self._diff_cooldown, NATIVEFS_COOLDOWN_S)
-                    print(f"[mono] nativefs checkout — stretched cooldown to {NATIVEFS_COOLDOWN_S}s", flush=True)
+                    print(f"[mono] nativefs checkout — stretched fp cooldown to {NATIVEFS_COOLDOWN_S}s", flush=True)
         except Exception:
             pass
 
@@ -130,6 +135,33 @@ class MonoBackend:
         return [_VCS_CMD, "status", "--short", "--ignored",
                 "--no-ahead-behind", "--no-sync-status"]
 
+    @staticmethod
+    def _parse_status_files(status):
+        """Extract file paths from short-format status output."""
+        files = []
+        for line in status.splitlines():
+            if len(line) < 4:
+                continue
+            p = line[3:].strip()
+            if " -> " in p:
+                p = p.split(" -> ", 1)[1]
+            if p.startswith('"') and p.endswith('"'):
+                p = p[1:-1]
+            files.append(p)
+        return files
+
+    def _mtime_overlay(self, path, files):
+        """Cheap content-change signal: lstat(mtime,size) of every modified file.
+        Runs in microseconds per file — safe to call on every fingerprint poll."""
+        parts = []
+        for f in files:
+            try:
+                st = os.lstat(os.path.join(path, f))
+                parts.append(f"{f}:{int(st.st_mtime_ns)}:{st.st_size}")
+            except OSError:
+                parts.append(f"{f}:x")
+        return "|".join(parts)
+
     def _diff_cmd(self, cached=False, stat=False):
         cmd = [_VCS_CMD, "diff"]
         if cached:
@@ -153,46 +185,72 @@ class MonoBackend:
                 if counter is not None:
                     return f"x:{counter}"
 
-            # Fallback: arc info hash + periodic cached status scan.
+            # Fallback: layered fingerprint. Base (hash + status) is refreshed
+            # at most once per cooldown window; mtime overlay is refreshed every
+            # call so content edits to already-modified files are seen instantly.
             age = time.monotonic() - self._fp_end
-            if self._fp_cache is not None and age < self._fp_cooldown:
-                print(f"[mono] fingerprint CACHED age={age*1000:.0f}ms cooldown={self._fp_cooldown:.1f}s", flush=True)
-                return self._fp_cache
+            if self._fp_base is not None and age < self._fp_cooldown:
+                overlay = self._mtime_overlay(path, self._fp_files)
+                result = f"{self._fp_base}|mt:{overlay}"
+                self._fp_last = result
+                return result
 
             t0 = time.monotonic()
             try:
                 hash_ = self._info_hash()
                 time.sleep(LOCK_GAP)
                 status = run_cmd(self._status_cmd(), path)
-                result = f"h:{hash_}|{status}"
+                base_fp = f"h:{hash_}|{status}"
+                files = self._parse_status_files(status)
             except Exception:
-                result = ""
+                base_fp = ""
+                files = []
             duration = time.monotonic() - t0
-            self._fp_cache = result
+            overlay = self._mtime_overlay(path, files)
+            result = f"{base_fp}|mt:{overlay}"
+            self._fp_base = base_fp
+            self._fp_files = files
+            self._fp_last = result
             self._fp_end = time.monotonic()
             base = NATIVEFS_COOLDOWN_S if self._is_nativefs else COOLDOWN_S
             self._fp_cooldown = max(base, duration * COOLDOWN_STRETCH)
-            print(f"[mono] fingerprint FRESH dt={duration:.2f}s next-cooldown={self._fp_cooldown:.1f}s", flush=True)
+            print(f"[mono] fingerprint FRESH dt={duration:.2f}s files={len(files)} next-cooldown={self._fp_cooldown:.1f}s", flush=True)
             return result
+
+    def get_blob(self, file, ref):
+        """ref ∈ {'head','worktree'}. Return bytes or None."""
+        if ref == "worktree":
+            try:
+                with open(os.path.join(self.root, file), "rb") as f:
+                    return f.read()
+            except OSError:
+                return None
+        if ref == "head":
+            result = run_subprocess(
+                [_VCS_CMD, "show", f"HEAD:{file}"], self.root,
+                capture_output=True, timeout=SUBPROCESS_TIMEOUT,
+            )
+            return result.stdout if result.returncode == 0 else None
+        return None
 
     def get_diff(self, path):
         with self._mutex:
+            # Compute cache key from CURRENT state — don't rely on fp_last
+            # which might be stale (e.g. server ran overnight, first /content
+            # arrives before any /hash).
             counter = self._xattr_counter()
+            if counter is not None:
+                key = f"x:{counter}"
+            elif self._fp_base is not None:
+                overlay = self._mtime_overlay(path, self._fp_files)
+                key = f"{self._fp_base}|mt:{overlay}"
+            else:
+                key = None
 
-            # Cache hit: xattr counter matches the snapshot saved on last success.
-            if counter is not None and self._diff_cache is not None and counter == self._diff_cache_counter:
-                print(f"[mono] get_diff XATTR-CACHED counter={counter}", flush=True)
+            if self._diff_cache is not None and key is not None and key == self._diff_cache_key:
+                print(f"[mono] get_diff CACHED key={key[:40]!r}", flush=True)
                 return self._diff_cache
 
-            # Fallback cache hit: within time cooldown window.
-            age = time.monotonic() - self._diff_end
-            if self._diff_cache is not None and age < self._diff_cooldown:
-                print(f"[mono] get_diff CACHED age={age*1000:.0f}ms cooldown={self._diff_cooldown:.1f}s", flush=True)
-                return self._diff_cache
-
-            # Snapshot counter BEFORE running so concurrent changes during the
-            # subprocess burst trigger a refresh on the next call.
-            snapshot = counter
             try:
                 t0 = time.monotonic()
                 staged = run_cmd(self._diff_cmd(cached=True), path)
@@ -206,14 +264,16 @@ class MonoBackend:
                 t2 = time.monotonic()
                 print(f"[perf] vcs_cmds={t1-t0:.3f}s untracked_diff={t2-t1:.3f}s files={len(untracked)}", flush=True)
                 result = (staged, unstaged)
-                duration = t2 - t0
             except Exception:
                 result = ("", "")
-                duration = 0.0
 
             self._diff_cache = result
-            self._diff_cache_counter = snapshot
-            self._diff_end = time.monotonic()
-            base = NATIVEFS_COOLDOWN_S if self._is_nativefs else COOLDOWN_S
-            self._diff_cooldown = max(base, duration * COOLDOWN_STRETCH)
+            # Re-read key AFTER subprocess (mtimes might have shifted mid-run).
+            # Concurrent changes → key differs on next call → cache miss.
+            if counter is not None:
+                self._diff_cache_key = f"x:{counter}"
+            elif self._fp_base is not None:
+                self._diff_cache_key = f"{self._fp_base}|mt:{self._mtime_overlay(path, self._fp_files)}"
+            else:
+                self._diff_cache_key = key
             return result

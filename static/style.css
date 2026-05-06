@@ -518,3 +518,168 @@ html, body {
 }
 .refresh-btn.spinning svg { animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== SVG visual diff ===== */
+.svg-diff {
+    background: var(--bg);
+    display: flex; flex-direction: column;
+}
+.svg-tabs {
+    display: flex; align-items: center; gap: 4px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--bg-raised);
+    flex-wrap: wrap;
+}
+.svg-tab {
+    padding: 3px 10px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--fg-secondary);
+    font-family: var(--sans); font-size: 11px; font-weight: 500;
+    cursor: pointer;
+    transition: all 0.12s ease;
+}
+.svg-tab:hover { color: var(--fg); border-color: var(--accent); }
+.svg-tab.is-active {
+    color: var(--accent); border-color: var(--accent);
+    background: var(--accent-dim);
+}
+.svg-status {
+    font-family: var(--display); font-size: 9px; font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase;
+    padding: 2px 6px; border-radius: 3px;
+    margin-left: 4px;
+}
+.svg-status-added { color: var(--green); background: var(--green-bg); }
+.svg-status-deleted { color: var(--red); background: var(--red-bg); }
+.svg-status-modified { color: var(--amber); background: var(--accent-dim); }
+.svg-spacer { flex: 1; }
+.svg-source-toggle {
+    padding: 3px 10px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--fg-tertiary);
+    font-family: var(--mono); font-size: 10px; font-weight: 500;
+    cursor: pointer;
+    transition: all 0.12s ease;
+}
+.svg-source-toggle:hover { color: var(--accent); border-color: var(--accent); }
+.svg-source-toggle.is-active {
+    color: var(--accent); border-color: var(--accent); background: var(--accent-dim);
+}
+
+.svg-view {
+    padding: 12px;
+    container-type: inline-size;
+}
+.svg-loading, .svg-error {
+    padding: 24px; text-align: center;
+    font-family: var(--mono); font-size: 11px;
+    color: var(--fg-tertiary);
+}
+.svg-error { color: var(--red); }
+
+.svg-stage { display: flex; flex-direction: column; gap: 8px; }
+.svg-stage-2up {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+}
+.svg-pane {
+    display: flex; flex-direction: column; gap: 6px;
+    min-width: 0;
+}
+.svg-pane-label {
+    font-family: var(--display); font-size: 9px; font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase;
+    color: var(--fg-tertiary);
+}
+.svg-pane-label-before { color: var(--red); }
+.svg-pane-label-after { color: var(--green); }
+
+/* Checkerboard reveals SVG transparency on either theme. */
+.svg-canvas {
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background-color: #ffffff;
+    background-image:
+        linear-gradient(45deg, #e6e6e6 25%, transparent 25%),
+        linear-gradient(-45deg, #e6e6e6 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #e6e6e6 75%),
+        linear-gradient(-45deg, transparent 75%, #e6e6e6 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+    min-height: 80px;
+    max-height: 480px;
+    display: flex; align-items: center; justify-content: center;
+    overflow: auto;
+    padding: 8px;
+}
+.svg-canvas img {
+    max-width: 100%; max-height: 460px;
+    display: block;
+    image-rendering: auto;
+}
+.svg-pane-empty {
+    color: var(--fg-tertiary);
+    font-family: var(--mono); font-size: 24px;
+    padding: 24px;
+    opacity: 0.5;
+}
+
+/* Difference + onion overlay both stack two layers. */
+.svg-stage-overlay .svg-canvas {
+    position: relative;
+}
+.svg-stage-overlay .svg-layer {
+    max-width: 100%; max-height: 460px;
+    display: block;
+}
+.svg-stage-overlay .svg-layer-base { position: relative; z-index: 1; }
+.svg-stage-overlay .svg-layer-blend,
+.svg-stage-overlay .svg-layer-top {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+}
+
+/* Difference: black background + difference blend reveals the delta. */
+.svg-stage-diff .svg-canvas {
+    background-color: #000;
+    background-image: none;
+}
+.svg-stage-diff .svg-layer-blend {
+    mix-blend-mode: difference;
+}
+.svg-hint {
+    font-family: var(--mono); font-size: 10px;
+    color: var(--fg-tertiary);
+    text-align: center;
+}
+
+.svg-slider-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 4px 8px;
+}
+.svg-slider-label {
+    font-family: var(--display); font-size: 9px; font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase;
+    color: var(--fg-tertiary);
+}
+.svg-slider {
+    flex: 1;
+    accent-color: var(--accent);
+}
+
+.svg-source { border-top: 1px solid var(--border-subtle); }
+.svg-source[hidden] { display: none; }
+
+/* Stack panes vertically when each side would be too cramped — based on the
+   svg-view container's own width, not the viewport, so it works inside a
+   resized sidebar layout too. */
+@container (max-width: 560px) {
+    .svg-stage-2up { grid-template-columns: 1fr; }
+}

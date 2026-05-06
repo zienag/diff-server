@@ -15,7 +15,7 @@ def _log(kind, msg):
     ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
     print(f"[{ts}] {kind:>8} {msg}", flush=True)
 
-from vcs import detect_vcs, get_diff, get_diff_fingerprint, get_activity, get_retry_after
+from vcs import detect_vcs, get_diff, get_diff_fingerprint, get_activity, get_retry_after, get_blob
 from page import make_shell_html, make_content
 
 PORT = 8777
@@ -51,6 +51,10 @@ class DiffHandler(BaseHTTPRequestHandler):
 
         if parsed.path == "/content":
             self._handle_content(params)
+            return
+
+        if parsed.path == "/blob":
+            self._handle_blob(params)
             return
 
         self._handle_page(params)
@@ -133,6 +137,30 @@ class DiffHandler(BaseHTTPRequestHandler):
         _log("/content", f"get_diff={(t1-t0)*1000:.0f}ms  render={(t2-t1)*1000:.0f}ms  "
                          f"staged={len(staged)}b  unstaged={len(unstaged)}b  dhash={result['diffHash'][:8]}")
         self._json_response(result)
+
+    def _handle_blob(self, params):
+        repo_path = params.get("path", [None])[0]
+        file = params.get("file", [None])[0]
+        ref = params.get("ref", ["head"])[0]
+        if not repo_path or not file:
+            self.send_error(400, "path and file required")
+            return
+        repo_path = os.path.expanduser(repo_path)
+        data = get_blob(repo_path, file, ref)
+        if data is None:
+            self.send_response(404)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        ext = os.path.splitext(file)[1]
+        mime = MIME_TYPES.get(ext, "application/octet-stream")
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
 
     def _handle_page(self, params):
         path = params.get("path", [None])[0]

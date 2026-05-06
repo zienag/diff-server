@@ -11,6 +11,32 @@ from tree import build_file_tree, render_tree_html, diff_bar_html, SVG_CHEVRON_D
 SVG_SEARCH = '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M10.68 11.74a6 6 0 01-7.922-8.982 6 6 0 018.982 7.922l3.04 3.04a.749.749 0 01-.326 1.275.749.749 0 01-.734-.215l-3.04-3.04zM11.5 7a4.499 4.499 0 10-8.997 0A4.499 4.499 0 0011.5 7z" fill="currentColor"/></svg>'
 
 
+def _svg_diff_shell(file_dict, source_html):
+    """Wrap text diff with a lazy-hydrating SVG visual viewer.
+    Status: added (no head) / deleted (no worktree) / modified."""
+    if file_dict["additions"] > 0 and file_dict["deletions"] == 0:
+        status = "added"
+    elif file_dict["deletions"] > 0 and file_dict["additions"] == 0:
+        status = "deleted"
+    else:
+        status = "modified"
+    raw = escape(file_dict["raw_path"], quote=True)
+    return (
+        f'<div class="svg-diff" data-file="{raw}" data-status="{status}">'
+        f'  <div class="svg-tabs">'
+        f'    <button class="svg-tab is-active" data-mode="2up">Side-by-side</button>'
+        f'    <button class="svg-tab" data-mode="diff">Difference</button>'
+        f'    <button class="svg-tab" data-mode="onion">Overlay</button>'
+        f'    <span class="svg-status svg-status-{status}">{status}</span>'
+        f'    <span class="svg-spacer"></span>'
+        f'    <button class="svg-source-toggle" type="button">Show source</button>'
+        f'  </div>'
+        f'  <div class="svg-view"><div class="svg-loading">Loading…</div></div>'
+        f'  <div class="svg-source" hidden>{source_html}</div>'
+        f'</div>'
+    )
+
+
 def _render_file_sections(files, idx_offset=0):
     """Render file diff sections, returning HTML and next index offset."""
     html = ""
@@ -32,6 +58,7 @@ def _render_file_sections(files, idx_offset=0):
         if f.get("renamed_from"):
             rename_part = f'<span class="fh-rename"> \u2190 {escape(f["renamed_from"])}</span>'
         escaped_path = escape(f["path"], quote=True)
+        body_html = _svg_diff_shell(f, f["html"]) if f.get("is_svg") else f["html"]
         html += f'''
         <div class="file-section" id="file-{i}">
             <div class="file-header" onclick="toggleFile({i})">
@@ -42,7 +69,7 @@ def _render_file_sections(files, idx_offset=0):
                 </button>
                 <span class="fh-stats">{stat_text} {bar}</span>
             </div>
-            <div class="file-body" id="body-{i}">{f["html"]}</div>
+            <div class="file-body" id="body-{i}">{body_html}</div>
         </div>'''
     return html
 
@@ -173,5 +200,6 @@ def make_shell_html(vcs, path, refresh_seconds):
 
 <script>window.__DIFF_CONFIG__ = {config_json};</script>
 <script src="/static/app.js"></script>
+<script src="/static/svg-diff.js"></script>
 </body>
 </html>"""

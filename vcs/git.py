@@ -5,7 +5,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from vcs.base import run_cmd, collect_diff, SUBPROCESS_TIMEOUT, FULL_SCAN_INTERVAL
+from vcs.base import run_cmd, run_subprocess, collect_diff, SUBPROCESS_TIMEOUT, FULL_SCAN_INTERVAL
 
 # Gap between END of a diff burst and START of the next one. Applies across
 # clients (multiple tabs). Short here because git is fast, so staleness is
@@ -88,6 +88,22 @@ class GitBackend:
                 return entry["staged"] + unstaged + entry["untracked"]
         except Exception:
             return ""
+
+    def get_blob(self, file, ref):
+        """ref ∈ {'head','worktree'}. Return bytes or None."""
+        if ref == "worktree":
+            try:
+                with open(os.path.join(self.root, file), "rb") as f:
+                    return f.read()
+            except OSError:
+                return None
+        if ref == "head":
+            result = run_subprocess(
+                ["git", "show", f"HEAD:{file}"], self.root,
+                capture_output=True, timeout=SUBPROCESS_TIMEOUT,
+            )
+            return result.stdout if result.returncode == 0 else None
+        return None
 
     def get_diff(self, path):
         with self._diff_lock:

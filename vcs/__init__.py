@@ -79,3 +79,15 @@ def get_diff(path):
         return backend.name, backend.root, staged, unstaged
     except Exception:
         return backend.name, backend.root, "", ""
+
+
+def get_blob(repo_path, file, ref):
+    """Return file contents (bytes) at the given ref, or None.
+    ref ∈ {'head','worktree'}. file is relative to backend root."""
+    backend = _get_backend(repo_path)
+    if not backend:
+        return None
+    try:
+        return backend.get_blob(file, ref)
+    except Exception:
+        return None

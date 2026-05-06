@@ -90,6 +90,7 @@ class _FileState:
             "additions": self.additions,
             "deletions": self.deletions,
             "html": self.html,
+            "is_svg": self.raw_path.lower().endswith(".svg"),
         }
         if self.renamed_from is not None:
             d["renamed_from"] = self.renamed_from
